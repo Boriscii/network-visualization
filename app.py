@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import dash
+import networkx as nx
 import dash_core_components as dcc
 import dash_html_components as html
-import networkx as nx
 import plotly.graph_objs as go
+import dash
+import api
 
 import pandas as pd
 from colour import Color
@@ -15,41 +16,83 @@ import json
 # import the css template, and pass the css template into dash
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-app.title = "Transaction Network"
+app.title = "Company Network"
 
-YEAR=[2010, 2019]
-ACCOUNT="A0001"
+NUMBER="11224081"
+
+def generate_network(cn):
+    officers = api.find_officers(cn)
+
+    i = 0
+    source = []
+    target = []
+    account = [cn]
+    customerName = ['Your Company']
+    typeDirector = []
+
+    for officer_name in officers[0]:
+        account.append(officer_name)
+        customerName.append(officer_name)
+
+        source.append(cn)
+        target.append(officer_name)
+
+        for child_company in list(officers[1])[i]:
+            for cn in child_company:
+                name = child_company[cn]
+
+            source.append(officer_name)
+            target.append(cn)
+            account.append(cn)
+            customerName.append(name)
+
+
+        i = i + 1
+
+ #   account = list(dict.fromkeys(account))
+ #   customerName = list(dict.fromkeys(customerName))
+
+    edges = {'Source': source,
+             'Target': target}   
+
+    nodes = {'Account': account,
+             'CustomerName': customerName,
+             'Type': account}
+
+
+
+    NODE = pd.DataFrame(nodes, columns = ['Account', 'CustomerName', 'Type'])
+    EDGE = pd.DataFrame(edges, columns = ['Source', 'Target'])
+
+    return NODE.drop_duplicates().reset_index(drop=True), EDGE
+
 
 ##############################################################################################################################################################
-def network_graph(yearRange, AccountToSearch):
+def network_graph(companyNumber):
 
-    edge1 = pd.read_csv('edge1.csv')
-    node1 = pd.read_csv('node1.csv')
+    node1, edge1 = generate_network(companyNumber)
+
+    print(node1)
 
     # filter the record by datetime, to enable interactive control through the input box
-    edge1['Datetime'] = "" # add empty Datetime column to edge1 dataframe
     accountSet=set() # contain unique account
     for index in range(0,len(edge1)):
-        edge1['Datetime'][index] = datetime.strptime(edge1['Date'][index], '%d/%m/%Y')
-        if edge1['Datetime'][index].year<yearRange[0] or edge1['Datetime'][index].year>yearRange[1]:
-            edge1.drop(axis=0, index=index, inplace=True)
-            continue
         accountSet.add(edge1['Source'][index])
         accountSet.add(edge1['Target'][index])
 
     # to define the centric point of the networkx layout
     shells=[]
     shell1=[]
-    shell1.append(AccountToSearch)
+    shell1.append(companyNumber)
     shells.append(shell1)
     shell2=[]
     for ele in accountSet:
-        if ele!=AccountToSearch:
+        if ele!=companyNumber:
             shell2.append(ele)
     shells.append(shell2)
 
 
-    G = nx.from_pandas_edgelist(edge1, 'Source', 'Target', ['Source', 'Target', 'TransactionAmt', 'Date'], create_using=nx.MultiDiGraph())
+    G = nx.from_pandas_edgelist(edge1, 'Source', 'Target', ['Source', 'Target'], create_using=nx.MultiDiGraph())
     nx.set_node_attributes(G, node1.set_index('Account')['CustomerName'].to_dict(), 'CustomerName')
     nx.set_node_attributes(G, node1.set_index('Account')['Type'].to_dict(), 'Type')
     # pos = nx.layout.spring_layout(G)
@@ -66,7 +109,7 @@ def network_graph(yearRange, AccountToSearch):
     if len(shell2)==0:
         traceRecode = []  # contains edge_trace, node_trace, middle_node_trace
 
-        node_trace = go.Scatter(x=tuple([1]), y=tuple([1]), text=tuple([str(AccountToSearch)]), textposition="bottom center",
+        node_trace = go.Scatter(x=tuple([1]), y=tuple([1]), text=tuple([str(companyNumber)]), textposition="bottom center",
                                 mode='markers+text',
                                 marker={'size': 50, 'color': 'LightSkyBlue'})
         traceRecode.append(node_trace)
@@ -97,10 +140,8 @@ def network_graph(yearRange, AccountToSearch):
     for edge in G.edges:
         x0, y0 = G.nodes[edge[0]]['pos']
         x1, y1 = G.nodes[edge[1]]['pos']
-        weight = float(G.edges[edge]['TransactionAmt']) / max(edge1['TransactionAmt']) * 10
         trace = go.Scatter(x=tuple([x0, x1, None]), y=tuple([y0, y1, None]),
                            mode='lines',
-                           line={'width': weight},
                            marker=dict(color=colors[index]),
                            line_shape='spline',
                            opacity=1)
@@ -113,9 +154,8 @@ def network_graph(yearRange, AccountToSearch):
     index = 0
     for node in G.nodes():
         x, y = G.nodes[node]['pos']
-        hovertext = "CustomerName: " + str(G.nodes[node]['CustomerName']) + "<br>" + "AccountType: " + str(
-            G.nodes[node]['Type'])
-        text = node1['Account'][index]
+        hovertext = node
+        text = G.nodes[node]['CustomerName']
         node_trace['x'] += tuple([x])
         node_trace['y'] += tuple([y])
         node_trace['hovertext'] += tuple([hovertext])
@@ -133,8 +173,7 @@ def network_graph(yearRange, AccountToSearch):
         x0, y0 = G.nodes[edge[0]]['pos']
         x1, y1 = G.nodes[edge[1]]['pos']
         hovertext = "From: " + str(G.edges[edge]['Source']) + "<br>" + "To: " + str(
-            G.edges[edge]['Target']) + "<br>" + "TransactionAmt: " + str(
-            G.edges[edge]['TransactionAmt']) + "<br>" + "TransactionDate: " + str(G.edges[edge]['Date'])
+            G.edges[edge]['Target']) + "<br>" 
         middle_hover_trace['x'] += tuple([(x0 + x1) / 2])
         middle_hover_trace['y'] += tuple([(y0 + y1) / 2])
         middle_hover_trace['hovertext'] += tuple([hovertext])
@@ -186,44 +225,11 @@ app.layout = html.Div([
             html.Div(
                 className="two columns",
                 children=[
-                    dcc.Markdown(d("""
-                            **Time Range To Visualize**
-
-                            Slide the bar to define year range.
-                            """)),
-                    html.Div(
-                        className="twelve columns",
-                        children=[
-                            dcc.RangeSlider(
-                                id='my-range-slider',
-                                min=2010,
-                                max=2019,
-                                step=1,
-                                value=[2010, 2019],
-                                marks={
-                                    2010: {'label': '2010'},
-                                    2011: {'label': '2011'},
-                                    2012: {'label': '2012'},
-                                    2013: {'label': '2013'},
-                                    2014: {'label': '2014'},
-                                    2015: {'label': '2015'},
-                                    2016: {'label': '2016'},
-                                    2017: {'label': '2017'},
-                                    2018: {'label': '2018'},
-                                    2019: {'label': '2019'}
-                                }
-                            ),
-                            html.Br(),
-                            html.Div(id='output-container-range-slider')
-                        ],
-                        style={'height': '300px'}
-                    ),
                     html.Div(
                         className="twelve columns",
                         children=[
                             dcc.Markdown(d("""
                             **Account To Search**
-
                             Input the account to visualize.
                             """)),
                             dcc.Input(id="input1", type="text", placeholder="Account"),
@@ -238,7 +244,7 @@ app.layout = html.Div([
             html.Div(
                 className="eight columns",
                 children=[dcc.Graph(id="my-graph",
-                                    figure=network_graph(YEAR, ACCOUNT))],
+                                    figure=network_graph(NUMBER))],
             ),
 
             #########################################right side two output component
@@ -250,7 +256,6 @@ app.layout = html.Div([
                         children=[
                             dcc.Markdown(d("""
                             **Hover Data**
-
                             Mouse over values in the graph.
                             """)),
                             html.Pre(id='hover-data', style=styles['pre'])
@@ -262,7 +267,6 @@ app.layout = html.Div([
                         children=[
                             dcc.Markdown(d("""
                             **Click Data**
-
                             Click on points in the graph.
                             """)),
                             html.Pre(id='click-data', style=styles['pre'])
@@ -275,28 +279,24 @@ app.layout = html.Div([
 ])
 
 ###################################callback for left side components
-@app.callback(
-    dash.dependencies.Output('my-graph', 'figure'),
-    [dash.dependencies.Input('my-range-slider', 'value'), dash.dependencies.Input('input1', 'value')])
-def update_output(value,input1):
-    YEAR = value
-    ACCOUNT = input1
-    return network_graph(value, input1)
+
     # to update the global variable of YEAR and ACCOUNT
 ################################callback for right side components
-@app.callback(
-    dash.dependencies.Output('hover-data', 'children'),
-    [dash.dependencies.Input('my-graph', 'hoverData')])
-def display_hover_data(hoverData):
-    return json.dumps(hoverData, indent=2)
 
 
 @app.callback(
-    dash.dependencies.Output('click-data', 'children'),
-    [dash.dependencies.Input('my-graph', 'clickData')])
-def display_click_data(clickData):
-    return json.dumps(clickData, indent=2)
-
+    dash.dependencies.Output('my-graph', 'figure'),
+    [dash.dependencies.Input('my-graph', 'clickData'), dash.dependencies.Input('input1', 'value')])
+def display_account(clickData, value):
+	ctx = dash.callback_context
+	print(ctx.triggered[0]['prop_id'].split('.')[0])
+	if ctx.triggered[0]['prop_id'].split('.')[0] == 'input1':
+		NUMBER = value
+		print(NUMBER)
+	else:
+		NUMBER = clickData['points'][0]['hovertext']
+		
+	return network_graph(NUMBER)
 
 
 if __name__ == '__main__':
