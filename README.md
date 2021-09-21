@@ -4,7 +4,7 @@ Python network visualization app using NetworkX, Plotly, Dash origninally create
 I've made some updates and now it's able to easily map UK companies. This is useful to see connections between individuals and firms and speed up EDD (enhanced due dilligence). It uses Company House data so works only in the UK.
 
 ## Deps
-The script depends on the `networkx, dash_core_components, dash_html_components, plotly, dash, pandas, colour, datetime, textwrap, json` modules.
+The script depends on the `networkx, dash_core_components, dash_html_components, plotly, dash, pandas, colour, datetime, textwrap, json, urllib, bs4, re, requests` modules.
 
 ## Run
 
